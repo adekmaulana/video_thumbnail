@@ -11,6 +11,7 @@ import android.util.Log;
 import android.util.Size;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -142,9 +143,9 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
 
         final List<Object> results = new LinkedList<Object>();
 
-        for (final String video: videos){
+        for (final String video : videos) {
             try {
-                if(new File(video).exists()) {
+                if (new File(video).exists()) {
                     results.add(buildThumbnailFile(video, headers, path, format, maxh, maxw, timeMs, quality));
                 }
             } catch (IOException e) {
@@ -194,8 +195,17 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
             case 1:
                 return Bitmap.CompressFormat.PNG;
             case 2:
-                return Bitmap.CompressFormat.WEBP;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    return Bitmap.CompressFormat.WEBP_LOSSY;
+                }
+
+                return getWebp();
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private static Bitmap.CompressFormat getWebp() {
+        return Bitmap.CompressFormat.WEBP;
     }
 
     private static String formatExt(int format) {
@@ -210,11 +220,13 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
         }
     }
 
-    private byte[] buildThumbnailData(final String vidPath, final HashMap<String, String> headers, int format, int maxh, int maxw, int timeMs, int quality) throws IOException {
+    private byte[] buildThumbnailData(final String vidPath, final HashMap<String, String> headers, int format, int maxh,
+            int maxw, int timeMs, int quality) throws IOException {
         // Log.d(TAG, String.format("buildThumbnailData( format:%d, maxh:%d, maxw:%d,
         // timeMs:%d, quality:%d )", format, maxh, maxw, timeMs, quality));
         Bitmap bitmap = createVideoThumbnail(vidPath, headers, maxh, maxw, timeMs);
-        if (bitmap == null) throw new NullPointerException();
+        if (bitmap == null)
+            throw new NullPointerException();
 
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         bitmap.compress(intToFormat(format), quality, stream);
@@ -222,7 +234,8 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
         return stream.toByteArray();
     }
 
-    private String buildThumbnailFile(final String vidPath, final HashMap<String, String> headers, String path, int format, int maxh, int maxw, int timeMs, int quality) throws IOException {
+    private String buildThumbnailFile(final String vidPath, final HashMap<String, String> headers, String path,
+            int format, int maxh, int maxw, int timeMs, int quality) throws IOException {
         // Log.d(TAG, String.format("buildThumbnailFile( format:%d, maxh:%d, maxw:%d,
         // timeMs:%d, quality:%d )", format, maxh, maxw, timeMs, quality));
         final byte bytes[] = buildThumbnailData(vidPath, headers, format, maxh, maxw, timeMs, quality);
@@ -254,7 +267,7 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
             FileOutputStream f = new FileOutputStream(fullpath);
             f.write(bytes);
             f.close();
-            Log.d(TAG, String.format("buildThumbnailFile( written:%d )", bytes.length));
+            // Log.d(TAG, String.format("buildThumbnailFile( written:%d )", bytes.length));
         } catch (java.io.IOException e) {
             e.printStackTrace();
             throw new RuntimeException(e);
@@ -287,7 +300,11 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
      * @param targetH the max height of the thumbnail
      * @param targetW the max width of the thumbnail
      */
-    public Bitmap createVideoThumbnail(final String video, final HashMap<String, String> headers, int targetH, int targetW, int timeMs) throws IOException {
+    public @Nullable Bitmap createVideoThumbnail(
+            final @NonNull String video,
+            final @Nullable HashMap<String, String> headers,
+            int targetH,
+            int targetW, int timeMs) throws IOException {
         Bitmap bitmap = null;
         MediaMetadataRetriever retriever = null;
 
@@ -296,26 +313,23 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
                 if (targetW == 0 && targetH == 0) {
                     targetW = 640;
                     targetH = 480;
-                }
-                else if (targetW == 0) {
-                    targetW = Math.round((float)(targetH * 16 / 9));
-                }
-                else if (targetH == 0) {
-                    targetH = Math.round((float)(targetW * 9 / 16));
+                } else if (targetW == 0) {
+                    targetW = Math.round((float) (targetH * 16 / 9));
+                } else if (targetH == 0) {
+                    targetH = Math.round((float) (targetW * 9 / 16));
                 }
                 bitmap = ThumbnailUtils.createVideoThumbnail(new File(video), new Size(targetW, targetH), null);
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && video.startsWith("file://") && timeMs == -1) {
                 if (targetW == 0 && targetH == 0) {
                     targetW = 640;
                     targetH = 480;
+                } else if (targetW == 0) {
+                    targetW = Math.round((float) (targetH * 16 / 9));
+                } else if (targetH == 0) {
+                    targetH = Math.round((float) (targetW * 9 / 16));
                 }
-                else if (targetW == 0) {
-                    targetW = Math.round((float)(targetH * 16 / 9));
-                }
-                else if (targetH == 0) {
-                    targetH = Math.round((float)(targetW * 9 / 16));
-                }
-                bitmap = ThumbnailUtils.createVideoThumbnail(new File(video.substring(7)), new Size(targetW, targetH), null);
+                bitmap = ThumbnailUtils.createVideoThumbnail(new File(video.substring(7)), new Size(targetW, targetH),
+                        null);
             } else {
                 retriever = new MediaMetadataRetriever();
                 if (video.startsWith("/")) {
@@ -329,7 +343,8 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
                 if (targetH != 0 || targetW != 0) {
                     if (Build.VERSION.SDK_INT >= 27 && targetH != 0 && targetW != 0) {
                         // API Level 27
-                        bitmap = retriever.getScaledFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST, targetW, targetH);
+                        bitmap = retriever.getScaledFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST,
+                                targetW, targetH);
                     } else {
                         bitmap = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST);
                         if (bitmap != null) {
@@ -341,7 +356,8 @@ public class VideoThumbnailPlugin implements FlutterPlugin, MethodCallHandler {
                             if (targetH == 0) {
                                 targetH = Math.round(((float) targetW / width) * height);
                             }
-                            Log.d(TAG, String.format("original w:%d, h:%d => %d, %d", width, height, targetW, targetH));
+                            // Log.d(TAG, String.format("original w:%d, h:%d => %d, %d", width, height,
+                            // targetW, targetH));
                             bitmap = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true);
                         }
                     }
